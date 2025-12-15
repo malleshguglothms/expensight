@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - Expensight'">Expensight</title>
+    <th:block th:replace="~{layout/base :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout/base :: header}"></th:block>
+    
+    <main class="main-content">
+        <div class="container">
+            <h1>Dashboard</h1>
+            
+            <div th:if="${name != null || email != null}" style="margin-top: 1.5rem;">
+                <p><strong>Welcome,</strong> <span th:text="${name}">User</span>!</p>
+                <p><strong>Email:</strong> <span th:text="${email}">email@example.com</span></p>
+                <p style="margin-top: 1rem; color: #6c757d; font-size: 0.9rem;">
+                    <small>Using OAuth authentication. User entity is disabled for now - receipts will use email for reference.</small>
+                </p>
+            </div>
+            
+            <!-- TODO: Re-enable when using User entity -->
+            <!-- <div th:if="${user != null}" style="margin-top: 1.5rem;">
+                <p><strong>Welcome,</strong> <span th:text="${user.name}">User</span>!</p>
+                <p><strong>Email:</strong> <span th:text="${user.email}">email@example.com</span></p>
+                <p><strong>OAuth Provider:</strong> <span th:text="${user.oauthProvider}">Google</span></p>
+                <p><strong>Member since:</strong> <span th:text="${#temporals.format(user.createdAt, 'MMMM dd, yyyy')}">Date</span></p>
+            </div> -->
+            
+            <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ddd;">
+            
+            <h2>Your Receipts</h2>
+            <p>Receipt upload functionality will be available soon.</p>
+            <p>This page will display a table of all your uploaded receipts with extracted data.</p>
+        </div>
+    </main>
+    
+    <th:block th:replace="~{layout/base :: footer}"></th:block>
+</body>
+</html>
+
+

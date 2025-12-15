@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - Expensight'">Expensight</title>
+    <th:block th:replace="~{layout/base :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout/base :: header}"></th:block>
+    
+    <main class="main-content">
+        <div class="container">
+            <h1>Login</h1>
+            
+            <div th:if="${alreadyLoggedIn}" style="padding: 1rem; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; margin: 1rem 0;">
+                <p><strong>You are already logged in as <span th:text="${name}">User</span>.</strong></p>
+                <p style="margin-top: 0.5rem;">
+                    <a href="/home" class="btn">Go to Dashboard</a>
+                    <form th:action="@{/logout}" method="post" style="display: inline; margin-left: 1rem;">
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                        <button type="submit" class="btn btn-secondary">Logout</button>
+                    </form>
+                </p>
+                <p style="margin-top: 1rem; font-size: 0.9rem;">
+                    To sign in with a different account, logout first or use the link below to force re-authentication.
+                </p>
+            </div>
+            
+            <p>Sign in with your Google account to continue:</p>
+            <p style="margin-top: 1.5rem;">
+                <a href="/oauth2/authorization/google" class="btn">Sign in with Google</a>
+                <a href="/force-login" class="btn" style="margin-left: 1rem; background-color: #95a5a6;">Sign in with Different Account</a>
+            </p>
+            <p style="margin-top: 2rem;">
+                <a href="/">← Back to Home</a>
+            </p>
+        </div>
+    </main>
+    
+    <th:block th:replace="~{layout/base :: footer}"></th:block>
+</body>
+</html>
+
+

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - Expensight'">Expensight</title>
+    <th:block th:replace="~{layout/base :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout/base :: header}"></th:block>
+    
+    <main class="main-content">
+        <div class="container">
+            <h1>Welcome to Expensight</h1>
+            <p>A receipt upload and management system.</p>
+            <p>Upload your receipts, extract data using OCR and AI, and manage your expenses.</p>
+            
+            <div th:if="${param.logout != null}" style="padding: 1rem; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; margin: 1rem 0; color: #155724;">
+                <p><strong>You have been successfully logged out.</strong></p>
+            </div>
+            
+            <div th:if="${#authorization.expression('!isAuthenticated()')}" style="margin-top: 2rem;">
+                <p>
+                    <a href="/login" class="btn">Sign in with Google</a>
+                </p>
+            </div>
+            
+            <div th:if="${#authorization.expression('isAuthenticated()')}" style="margin-top: 2rem;">
+                <p>
+                    <a href="/home" class="btn">Go to Dashboard</a>
+                </p>
+            </div>
+        </div>
+    </main>
+    
+    <th:block th:replace="~{layout/base :: footer}"></th:block>
+</body>
+</html>
+
+
