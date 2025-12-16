@@ -12,8 +12,6 @@ import com.gm.expensight.service.dto.ReceiptParsingResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.UUID;
-
 @Slf4j
 @Service
 public class ReceiptParserServiceImpl implements ReceiptParserService {
@@ -81,6 +79,30 @@ public class ReceiptParserServiceImpl implements ReceiptParserService {
         }
         if (result.getReceiptDate() == null) {
             throw new LlmException("Parsed result missing required field: receiptDate");
+        }
+        
+        validateReceiptContent(result);
+    }
+    
+    private void validateReceiptContent(ReceiptParsingResult result) throws LlmException {
+        String merchantName = result.getMerchantName().trim();
+        
+        if ("NOT_A_RECEIPT".equalsIgnoreCase(merchantName) || 
+            merchantName.matches(".*[Nn]ot.*[Aa].*[Rr]eceipt.*")) {
+            throw new LlmException("Uploaded file does not appear to be a receipt. Please upload a valid receipt image or PDF.");
+        }
+        
+        if ("Unknown".equalsIgnoreCase(merchantName) && 
+            (result.getTotalAmount() == null || result.getTotalAmount().compareTo(java.math.BigDecimal.ZERO) <= 0)) {
+            throw new LlmException("Unable to extract valid receipt data. The uploaded file may not be a receipt.");
+        }
+        
+        if (merchantName.length() < 2) {
+            throw new LlmException("Invalid merchant name extracted. The uploaded file may not be a receipt.");
+        }
+        
+        if (merchantName.length() > 200) {
+            throw new LlmException("Invalid merchant name extracted. The uploaded file may not be a receipt.");
         }
     }
     

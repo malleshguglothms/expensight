@@ -25,6 +25,8 @@ public class PromptServiceImpl implements PromptService {
           - quantity: Quantity (number, default: 1)
           - price: Price per unit (number, required)
         
+        IMPORTANT: If the OCR text does NOT contain receipt-related information (e.g., it's a diagram, document, or unrelated content), return merchantName as "NOT_A_RECEIPT" to indicate the file is not a receipt.
+        
         Extraction rules:
         1. Dates: Convert to YYYY-MM-DD. If only day/month found, use current year.
         2. Amounts: Extract as numbers only (remove currency symbols, commas).
@@ -36,9 +38,10 @@ public class PromptServiceImpl implements PromptService {
            - € = EUR (Euro)
            - If you see "JPY" or "¥" in Indian context (GST, CGST, SGST, or amounts in hundreds/thousands), it's likely INR misread
            - Default to INR if currency is unclear or for Indian receipts
-        6. Merchant: Extract the store/business name clearly visible.
+        6. Merchant: Extract the store/business name clearly visible. If no receipt data found, set to "NOT_A_RECEIPT".
         7. Missing data: Make reasonable inferences, but prioritize accuracy.
         8. Indian Receipts: If you see GST, CGST, SGST, or amounts typical of Indian currency (hundreds to lakhs), assume INR currency.
+        9. Non-receipt detection: If the content is clearly not a receipt (diagrams, system architecture, documents, etc.), set merchantName to "NOT_A_RECEIPT".
         
         OCR Text:
         %s

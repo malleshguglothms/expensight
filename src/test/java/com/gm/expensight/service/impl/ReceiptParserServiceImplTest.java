@@ -137,5 +137,49 @@ class ReceiptParserServiceImplTest {
         assertThat(updated.getItems()).hasSize(1);
         assertThat(updated.getItems().get(0).getItemName()).isEqualTo("Product A");
     }
+    
+    @Test
+    void shouldRejectNonReceiptContent() throws LlmException {
+        String ocrText = "This is a banking system architecture diagram showing Kafka, NotifyService, and other components. Not a receipt.";
+        String prompt = "Parse this receipt...";
+        String llmResponse = """
+            {
+              "merchantName": "NOT_A_RECEIPT",
+              "totalAmount": 0,
+              "receiptDate": "2024-12-16",
+              "currency": "INR",
+              "items": []
+            }
+            """;
+        
+        when(promptService.buildReceiptParsingPrompt(ocrText)).thenReturn(prompt);
+        when(llmService.generateText(prompt, 0.2)).thenReturn(llmResponse);
+        
+        assertThatThrownBy(() -> receiptParserService.parseReceipt(ocrText))
+                .isInstanceOf(LlmException.class)
+                .hasMessageContaining("does not appear to be a receipt");
+    }
+    
+    @Test
+    void shouldRejectInvalidReceiptWithUnknownMerchantAndZeroAmount() throws LlmException {
+        String ocrText = "Some random text that doesn't contain receipt information";
+        String prompt = "Parse this receipt...";
+        String llmResponse = """
+            {
+              "merchantName": "Unknown",
+              "totalAmount": 0,
+              "receiptDate": "2024-12-16",
+              "currency": "INR",
+              "items": []
+            }
+            """;
+        
+        when(promptService.buildReceiptParsingPrompt(ocrText)).thenReturn(prompt);
+        when(llmService.generateText(prompt, 0.2)).thenReturn(llmResponse);
+        
+        assertThatThrownBy(() -> receiptParserService.parseReceipt(ocrText))
+                .isInstanceOf(LlmException.class)
+                .hasMessageContaining("may not be a receipt");
+    }
 }
 
