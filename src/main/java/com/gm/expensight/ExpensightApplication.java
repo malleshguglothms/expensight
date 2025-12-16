@@ -1,5 +1,6 @@
 package com.gm.expensight;
 
+import com.gm.expensight.config.TesseractLibraryInitializer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -7,7 +8,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class ExpensightApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(ExpensightApplication.class, args);
+		SpringApplication application = new SpringApplication(ExpensightApplication.class);
+		application.addInitializers(new TesseractLibraryInitializer());
+		application.run(args);
 	}
-
 }

@@ -6,6 +6,9 @@ import com.gm.expensight.domain.model.Receipt;
 import com.gm.expensight.repository.ReceiptRepository;
 import com.gm.expensight.service.FileStorageService;
 import com.gm.expensight.service.FileValidator;
+import com.gm.expensight.service.OcrException;
+import com.gm.expensight.service.OcrService;
+import com.gm.expensight.service.OcrServiceFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +44,12 @@ class ReceiptServiceImplTest {
     @Mock
     private ReceiptRepository receiptRepository;
 
+    @Mock
+    private OcrServiceFactory ocrServiceFactory;
+
+    @Mock
+    private OcrService ocrService;
+
     @InjectMocks
     private ReceiptServiceImpl receiptService;
 
@@ -61,13 +70,14 @@ class ReceiptServiceImplTest {
     }
 
     @Test
-    void shouldUploadReceiptSuccessfully() {
+    void shouldUploadReceiptSuccessfully() throws OcrException, java.io.IOException {
         // Given
+        UUID receiptId = UUID.randomUUID();
         when(fileStorageService.storeFile(any(MultipartFile.class), anyString()))
                 .thenReturn(storagePath);
 
         Receipt savedReceipt = Receipt.builder()
-                .id(UUID.randomUUID())
+                .id(receiptId)
                 .userEmail(userEmail)
                 .merchantName("Unknown")
                 .totalAmount(BigDecimal.ZERO)
@@ -83,7 +93,15 @@ class ReceiptServiceImplTest {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        when(receiptRepository.save(any(Receipt.class))).thenReturn(savedReceipt);
+        // First save returns the saved receipt, subsequent saves return the argument (for processing updates)
+        when(receiptRepository.save(any(Receipt.class)))
+                .thenReturn(savedReceipt)  // First call (initial save)
+                .thenAnswer(invocation -> invocation.getArgument(0));  // Subsequent calls (processing updates)
+        when(receiptRepository.findById(receiptId)).thenReturn(Optional.of(savedReceipt));
+        when(ocrServiceFactory.getDefaultOcrService()).thenReturn(ocrService);
+        when(ocrService.isAvailable()).thenReturn(true);
+        when(fileStorageService.loadFile(storagePath)).thenReturn("test image data".getBytes());
+        when(ocrService.extractText(any(byte[].class))).thenReturn("Extracted text");
 
         // When
         Receipt result = receiptService.uploadReceipt(mockFile, userEmail);
@@ -91,13 +109,16 @@ class ReceiptServiceImplTest {
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getUserEmail()).isEqualTo(userEmail);
-        assertThat(result.getStatus()).isEqualTo(ProcessingStatus.PENDING);
         assertThat(result.getFileMetadata()).isNotNull();
         assertThat(result.getFileMetadata().getFileName()).isEqualTo("receipt.jpg");
 
         verify(fileValidator).validate(mockFile);
         verify(fileStorageService).storeFile(mockFile, userEmail);
-        verify(receiptRepository).save(any(Receipt.class));
+        verify(receiptRepository, atLeast(1)).save(any(Receipt.class));
+        // Verify processing was attempted (auto-processing after upload)
+        verify(ocrServiceFactory).getDefaultOcrService();
+        verify(fileStorageService).loadFile(storagePath);
+        verify(ocrService).extractText(any(byte[].class));
     }
 
     @Test
@@ -205,13 +226,23 @@ class ReceiptServiceImplTest {
     }
 
     @Test
-    void shouldProcessReceiptSuccessfully() {
+    void shouldProcessReceiptSuccessfully() throws OcrException, java.io.IOException {
         // Given
         UUID receiptId = UUID.randomUUID();
         Receipt receipt = createReceipt(receiptId, userEmail);
+        receipt.getFileMetadata().setStoragePath("test/path.jpg");
+        receipt.getFileMetadata().setContentType("image/jpeg");
+
+        byte[] fileData = "test image data".getBytes();
+        String extractedText = "Extracted receipt text";
 
         when(receiptRepository.findById(receiptId))
                 .thenReturn(Optional.of(receipt));
+        when(ocrServiceFactory.getDefaultOcrService()).thenReturn(ocrService);
+        when(ocrService.isAvailable()).thenReturn(true);
+        when(fileStorageService.loadFile("test/path.jpg")).thenReturn(fileData);
+        when(ocrService.extractText(fileData)).thenReturn(extractedText);
+        when(receiptRepository.save(any(Receipt.class))).thenReturn(receipt);
 
         // When
         Receipt result = receiptService.processReceipt(receiptId);
@@ -219,9 +250,13 @@ class ReceiptServiceImplTest {
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(receiptId);
-        // Note: Processing logic is not yet implemented, so receipt is returned as-is
+        assertThat(result.getRawOcrText()).isEqualTo(extractedText);
+        assertThat(result.getStatus()).isEqualTo(ProcessingStatus.PROCESSING);
 
         verify(receiptRepository).findById(receiptId);
+        verify(ocrServiceFactory).getDefaultOcrService();
+        verify(fileStorageService).loadFile("test/path.jpg");
+        verify(ocrService).extractText(fileData);
     }
 
     @Test
@@ -239,13 +274,60 @@ class ReceiptServiceImplTest {
     }
 
     @Test
-    void shouldCreateReceiptWithCorrectMetadata() {
+    void shouldCreateReceiptWithCorrectMetadata() throws OcrException, java.io.IOException {
         // Given
+        UUID receiptId = UUID.randomUUID();
         when(fileStorageService.storeFile(any(MultipartFile.class), anyString()))
                 .thenReturn(storagePath);
 
         Receipt savedReceipt = Receipt.builder()
-                .id(UUID.randomUUID())
+                .id(receiptId)
+                .userEmail(userEmail)
+                .merchantName("Unknown")
+                .totalAmount(BigDecimal.ZERO)
+                .receiptDate(LocalDate.now())
+                .status(ProcessingStatus.PENDING)
+                .fileMetadata(FileMetadata.builder()
+                        .id(UUID.randomUUID())
+                        .fileName("receipt.jpg")
+                        .contentType("image/jpeg")
+                        .storagePath(storagePath)
+                        .uploadedAt(LocalDateTime.now())
+                        .build())
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        // First save returns the saved receipt, subsequent saves return the argument (for processing updates)
+        when(receiptRepository.save(any(Receipt.class)))
+                .thenReturn(savedReceipt)  // First call (initial save)
+                .thenAnswer(invocation -> invocation.getArgument(0));  // Subsequent calls (processing updates)
+        when(receiptRepository.findById(receiptId)).thenReturn(Optional.of(savedReceipt));
+        when(ocrServiceFactory.getDefaultOcrService()).thenReturn(ocrService);
+        when(ocrService.isAvailable()).thenReturn(true);
+        when(fileStorageService.loadFile(storagePath)).thenReturn("test image data".getBytes());
+        when(ocrService.extractText(any(byte[].class))).thenReturn("Extracted text");
+
+        // When
+        Receipt result = receiptService.uploadReceipt(mockFile, userEmail);
+
+        // Then
+        assertThat(result.getFileMetadata()).isNotNull();
+        assertThat(result.getFileMetadata().getFileName()).isEqualTo("receipt.jpg");
+        assertThat(result.getFileMetadata().getContentType()).isEqualTo("image/jpeg");
+        assertThat(result.getFileMetadata().getStoragePath()).isEqualTo(storagePath);
+        assertThat(result.getMerchantName()).isEqualTo("Unknown");
+        assertThat(result.getTotalAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void shouldUploadReceiptEvenIfProcessingFails() throws java.io.IOException {
+        // Given
+        UUID receiptId = UUID.randomUUID();
+        when(fileStorageService.storeFile(any(MultipartFile.class), anyString()))
+                .thenReturn(storagePath);
+
+        Receipt savedReceipt = Receipt.builder()
+                .id(receiptId)
                 .userEmail(userEmail)
                 .merchantName("Unknown")
                 .totalAmount(BigDecimal.ZERO)
@@ -262,18 +344,75 @@ class ReceiptServiceImplTest {
                 .build();
 
         when(receiptRepository.save(any(Receipt.class))).thenReturn(savedReceipt);
+        when(receiptRepository.findById(receiptId)).thenReturn(Optional.of(savedReceipt));
+        when(ocrServiceFactory.getDefaultOcrService()).thenReturn(ocrService);
+        when(ocrService.isAvailable()).thenReturn(true);
+        when(fileStorageService.loadFile(storagePath)).thenThrow(new java.io.IOException("File not found"));
 
-        // When
+        // When - Should not throw exception even if processing fails
         Receipt result = receiptService.uploadReceipt(mockFile, userEmail);
 
         // Then
-        assertThat(result.getFileMetadata()).isNotNull();
-        assertThat(result.getFileMetadata().getFileName()).isEqualTo("receipt.jpg");
-        assertThat(result.getFileMetadata().getContentType()).isEqualTo("image/jpeg");
-        assertThat(result.getFileMetadata().getStoragePath()).isEqualTo(storagePath);
-        assertThat(result.getMerchantName()).isEqualTo("Unknown");
-        assertThat(result.getTotalAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(result.getStatus()).isEqualTo(ProcessingStatus.PENDING);
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(receiptId);
+        // Receipt should still be saved even if processing fails
+        // save() is called once for initial save, and potentially again during processing failure
+        verify(receiptRepository, atLeast(1)).save(any(Receipt.class));
+        // Verify processing was attempted but failed
+        verify(ocrServiceFactory).getDefaultOcrService();
+        verify(fileStorageService).loadFile(storagePath);
+    }
+
+    @Test
+    void shouldHandleOcrFailure() throws java.io.IOException, OcrException {
+        // Given
+        UUID receiptId = UUID.randomUUID();
+        Receipt receipt = createReceipt(receiptId, userEmail);
+        receipt.getFileMetadata().setStoragePath("test/path.jpg");
+        receipt.getFileMetadata().setContentType("image/jpeg");
+
+        byte[] fileData = "test image data".getBytes();
+
+        when(receiptRepository.findById(receiptId))
+                .thenReturn(Optional.of(receipt));
+        when(ocrServiceFactory.getDefaultOcrService()).thenReturn(ocrService);
+        when(ocrService.isAvailable()).thenReturn(true);
+        when(fileStorageService.loadFile("test/path.jpg")).thenReturn(fileData);
+        when(ocrService.extractText(fileData)).thenThrow(new OcrException("OCR failed"));
+        when(receiptRepository.save(any(Receipt.class))).thenReturn(receipt);
+
+        // When
+        Receipt result = receiptService.processReceipt(receiptId);
+
+        // Then
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo(ProcessingStatus.FAILED);
+        assertThat(result.getFailureReason()).contains("OCR processing failed");
+
+        verify(receiptRepository).save(any(Receipt.class));
+    }
+
+    @Test
+    void shouldHandleMissingFileMetadata() {
+        // Given
+        UUID receiptId = UUID.randomUUID();
+        Receipt receipt = createReceipt(receiptId, userEmail);
+        receipt.setFileMetadata(null); // Missing metadata
+
+        when(receiptRepository.findById(receiptId))
+                .thenReturn(Optional.of(receipt));
+        when(receiptRepository.save(any(Receipt.class))).thenReturn(receipt);
+
+        // When
+        Receipt result = receiptService.processReceipt(receiptId);
+
+        // Then
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo(ProcessingStatus.FAILED);
+        assertThat(result.getFailureReason()).contains("Missing file metadata");
+
+        verify(receiptRepository).save(any(Receipt.class));
+        verify(ocrServiceFactory, never()).getDefaultOcrService();
     }
 
     private Receipt createReceipt(UUID id, String email) {

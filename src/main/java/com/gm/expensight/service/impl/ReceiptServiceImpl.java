@@ -6,6 +6,9 @@ import com.gm.expensight.domain.model.Receipt;
 import com.gm.expensight.repository.ReceiptRepository;
 import com.gm.expensight.service.FileStorageService;
 import com.gm.expensight.service.FileValidator;
+import com.gm.expensight.service.OcrException;
+import com.gm.expensight.service.OcrService;
+import com.gm.expensight.service.OcrServiceFactory;
 import com.gm.expensight.service.ReceiptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,14 +22,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Implementation of ReceiptService.
- * 
- * Follows Single Responsibility Principle - handles receipt business logic.
- * Orchestrates file validation, storage, and entity creation.
- * 
- * Uses constructor injection for dependencies (Dependency Inversion Principle).
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -35,20 +30,16 @@ public class ReceiptServiceImpl implements ReceiptService {
     private final FileValidator fileValidator;
     private final FileStorageService fileStorageService;
     private final ReceiptRepository receiptRepository;
+    private final OcrServiceFactory ocrServiceFactory;
 
     @Override
     @Transactional
     public Receipt uploadReceipt(MultipartFile file, String userEmail) {
         log.info("Uploading receipt for user: {}", userEmail);
         
-        // 1. Validate file
         fileValidator.validate(file);
-        
-        // 2. Store file
         String storagePath = fileStorageService.storeFile(file, userEmail);
-        log.debug("File stored at path: {}", storagePath);
         
-        // 3. Create file metadata
         FileMetadata fileMetadata = FileMetadata.builder()
                 .id(UUID.randomUUID())
                 .fileName(file.getOriginalFilename())
@@ -57,21 +48,27 @@ public class ReceiptServiceImpl implements ReceiptService {
                 .uploadedAt(LocalDateTime.now())
                 .build();
         
-        // 4. Create receipt entity
         Receipt receipt = Receipt.builder()
                 .userEmail(userEmail)
-                .merchantName("Unknown") // Will be updated by OCR/LLM processing
-                .totalAmount(BigDecimal.ZERO) // Will be updated by OCR/LLM processing
-                .receiptDate(LocalDate.now()) // Will be updated by OCR/LLM processing
+                .merchantName("Unknown")
+                .totalAmount(BigDecimal.ZERO)
+                .receiptDate(LocalDate.now())
                 .taxAmount(BigDecimal.ZERO)
                 .currency("INR")
                 .status(ProcessingStatus.PENDING)
                 .fileMetadata(fileMetadata)
                 .build();
         
-        // 5. Save receipt
         Receipt savedReceipt = receiptRepository.save(receipt);
         log.info("Receipt created with ID: {}", savedReceipt.getId());
+        
+        try {
+            processReceipt(savedReceipt.getId());
+            log.info("Receipt {} processed successfully after upload", savedReceipt.getId());
+        } catch (Exception e) {
+            log.warn("Auto-processing failed for receipt {}: {}. Receipt saved but not processed. " +
+                    "Status: PENDING. Can be retried manually.", savedReceipt.getId(), e.getMessage());
+        }
         
         return savedReceipt;
     }
@@ -99,15 +96,48 @@ public class ReceiptServiceImpl implements ReceiptService {
         
         Receipt receipt = getReceiptById(receiptId);
         
-        // TODO: Phase 3 - Implement OCR and LLM parsing
-        // 1. Load file from storage
-        // 2. Call OCR service to extract text
-        // 3. Call LLM parser to extract structured data
-        // 4. Update receipt with extracted data
-        // 5. Update status to COMPLETED or FAILED
-        
-        log.warn("Receipt processing not yet implemented. Receipt ID: {}", receiptId);
-        return receipt;
+        if (receipt.getFileMetadata() == null || receipt.getFileMetadata().getStoragePath() == null) {
+            log.error("Receipt {} has no file metadata or storage path", receiptId);
+            receipt.setStatus(ProcessingStatus.FAILED);
+            receipt.setFailureReason("Missing file metadata or storage path");
+            return receiptRepository.save(receipt);
+        }
+
+        try {
+            OcrService ocrService = ocrServiceFactory.getDefaultOcrService();
+            if (!ocrService.isAvailable()) {
+                throw new IllegalStateException("OCR service is not available");
+            }
+
+            byte[] fileData = fileStorageService.loadFile(receipt.getFileMetadata().getStoragePath());
+            String contentType = receipt.getFileMetadata().getContentType();
+
+            String extractedText;
+            if (contentType != null && contentType.equals("application/pdf")) {
+                extractedText = ocrService.extractTextFromPdf(fileData);
+            } else {
+                extractedText = ocrService.extractText(fileData);
+            }
+
+            receipt.setRawOcrText(extractedText);
+            receipt.setStatus(ProcessingStatus.PROCESSING);
+            
+            log.info("OCR completed for receipt {}. Extracted {} characters.", 
+                    receiptId, extractedText != null ? extractedText.length() : 0);
+            
+            return receiptRepository.save(receipt);
+
+        } catch (OcrException e) {
+            log.error("OCR processing failed for receipt {}: {}", receiptId, e.getMessage(), e);
+            receipt.setStatus(ProcessingStatus.FAILED);
+            receipt.setFailureReason("OCR processing failed: " + e.getMessage());
+            return receiptRepository.save(receipt);
+        } catch (Exception e) {
+            log.error("Unexpected error processing receipt {}: {}", receiptId, e.getMessage(), e);
+            receipt.setStatus(ProcessingStatus.FAILED);
+            receipt.setFailureReason("Processing error: " + e.getMessage());
+            return receiptRepository.save(receipt);
+        }
     }
 }
 

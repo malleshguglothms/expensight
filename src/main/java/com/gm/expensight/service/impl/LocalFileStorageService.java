@@ -15,14 +15,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
-/**
- * Local filesystem implementation of FileStorageService.
- * 
- * This implementation stores files on the local filesystem,
- * organized by user email in separate directories.
- * 
- * Follows Single Responsibility Principle - only handles file storage.
- */
 @Slf4j
 @Service
 public class LocalFileStorageService implements FileStorageService {
@@ -30,7 +22,6 @@ public class LocalFileStorageService implements FileStorageService {
     private Path storageLocation;
 
     public LocalFileStorageService() {
-        // Default constructor for Spring
     }
 
     @Value("${storage.location:upload-dir}")
@@ -43,8 +34,7 @@ public class LocalFileStorageService implements FileStorageService {
         }
     }
 
-    // Package-private constructor for testing (accessible from test package)
-    LocalFileStorageService(Path storageLocation) {
+    public LocalFileStorageService(Path storageLocation) {
         this.storageLocation = storageLocation.toAbsolutePath().normalize();
         try {
             Files.createDirectories(this.storageLocation);

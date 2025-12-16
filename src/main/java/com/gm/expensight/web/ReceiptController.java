@@ -15,16 +15,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * REST controller for receipt operations.
- * 
- * Follows Single Responsibility Principle - only handles HTTP concerns:
- * - Request/response mapping
- * - Authentication/authorization
- * - Error handling and status codes
- * 
- * Business logic is delegated to ReceiptService (Dependency Inversion Principle).
- */
 @Slf4j
 @RestController
 @RequestMapping("/receipts")
@@ -33,13 +23,6 @@ public class ReceiptController {
 
     private final ReceiptService receiptService;
 
-    /**
-     * Uploads a receipt file.
-     * 
-     * @param file the receipt file to upload
-     * @param principal the authenticated OAuth2 user
-     * @return response with receipt details
-     */
     @PostMapping("/upload")
     public ResponseEntity<UploadReceiptResponse> uploadReceipt(
             @RequestParam("file") MultipartFile file,
@@ -82,12 +65,6 @@ public class ReceiptController {
         }
     }
 
-    /**
-     * Retrieves all receipts for the authenticated user.
-     * 
-     * @param principal the authenticated OAuth2 user
-     * @return list of user's receipts
-     */
     @GetMapping
     public ResponseEntity<List<Receipt>> getReceipts(@AuthenticationPrincipal OAuth2User principal) {
         if (principal == null) {
@@ -103,13 +80,6 @@ public class ReceiptController {
         return ResponseEntity.ok(receipts);
     }
 
-    /**
-     * Retrieves a specific receipt by ID.
-     * 
-     * @param receiptId the receipt ID
-     * @param principal the authenticated OAuth2 user
-     * @return the receipt if found and belongs to user
-     */
     @GetMapping("/{receiptId}")
     public ResponseEntity<Receipt> getReceipt(
             @PathVariable UUID receiptId,
@@ -127,7 +97,6 @@ public class ReceiptController {
         try {
             Receipt receipt = receiptService.getReceiptById(receiptId);
             
-            // Verify receipt belongs to user
             if (!receipt.getUserEmail().equals(userEmail)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
