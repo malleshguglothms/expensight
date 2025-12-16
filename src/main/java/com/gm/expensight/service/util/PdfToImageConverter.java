@@ -1,5 +1,6 @@
 package com.gm.expensight.service.util;
 
+import com.gm.expensight.exception.ValidationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -8,7 +9,6 @@ import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,7 +22,7 @@ public class PdfToImageConverter {
     
     public List<BufferedImage> convertToImages(byte[] pdfData, int dpi) throws IOException {
         if (pdfData == null || pdfData.length == 0) {
-            throw new IllegalArgumentException("PDF data cannot be null or empty");
+            throw new ValidationException("PDF data cannot be null or empty");
         }
         
         List<BufferedImage> images = new ArrayList<>();

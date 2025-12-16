@@ -10,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.gm.expensight.exception.OcrException;
 
 /**
  * Base test class for OCR service implementations.

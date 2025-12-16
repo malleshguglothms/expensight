@@ -1,5 +1,7 @@
 package com.gm.expensight.service;
 
+import com.gm.expensight.exception.OcrException;
+
 import java.util.concurrent.CompletableFuture;
 
 public interface OcrService {

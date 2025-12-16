@@ -12,25 +12,13 @@
     
     <main class="main-content">
         <div class="container">
-            <h1>Dashboard</h1>
-            
-            <div th:if="${name != null || email != null}" style="margin-top: 1.5rem;">
-                <p><strong>Welcome,</strong> <span th:text="${name}">User</span>!</p>
-                <p><strong>Email:</strong> <span th:text="${email}">email@example.com</span></p>
-                <p style="margin-top: 1rem; color: #6c757d; font-size: 0.9rem;">
-                    <small>Using OAuth authentication. User entity is disabled for now - receipts will use email for reference.</small>
-                </p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <h1 style="margin: 0;">Dashboard</h1>
+                <div th:if="${name != null || email != null}" style="text-align: right; font-size: 0.9rem; color: #6c757d;">
+                    <div><strong th:text="${name}">User</strong></div>
+                    <div th:text="${email}">email@example.com</div>
+                </div>
             </div>
-            
-            <!-- TODO: Re-enable when using User entity -->
-            <!-- <div th:if="${user != null}" style="margin-top: 1.5rem;">
-                <p><strong>Welcome,</strong> <span th:text="${user.name}">User</span>!</p>
-                <p><strong>Email:</strong> <span th:text="${user.email}">email@example.com</span></p>
-                <p><strong>OAuth Provider:</strong> <span th:text="${user.oauthProvider}">Google</span></p>
-                <p><strong>Member since:</strong> <span th:text="${#temporals.format(user.createdAt, 'MMMM dd, yyyy')}">Date</span></p>
-            </div> -->
-            
-            <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ddd;">
             
             <h2>Upload Receipt</h2>
             <form id="uploadForm" enctype="multipart/form-data" style="margin-top: 1rem;">
@@ -169,24 +157,64 @@
                     return;
                 }
                 
+                function formatDate(dateString) {
+                    if (!dateString) return 'N/A';
+                    try {
+                        const date = new Date(dateString);
+                        if (isNaN(date.getTime())) {
+                            return dateString;
+                        }
+                        return date.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric' 
+                        });
+                    } catch (e) {
+                        return dateString;
+                    }
+                }
+                
+                function formatItems(items) {
+                    if (!items || items.length === 0) return 'N/A';
+                    return items.map(item => {
+                        const qty = item.quantity > 1 ? ' (x' + item.quantity + ')' : '';
+                        return (item.itemName || 'N/A') + qty;
+                    }).join(', ');
+                }
+                
+                function getCurrencySymbol(currency) {
+                    if (!currency) return '₹';
+                    const currencyMap = {
+                        'INR': '₹',
+                        'USD': '$',
+                        'EUR': '€',
+                        'GBP': '£',
+                        'JPY': '¥'
+                    };
+                    return currencyMap[currency.toUpperCase()] || currency + ' ';
+                }
+                
                 let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">';
                 html += '<thead><tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">';
-                html += '<th style="padding: 0.75rem; text-align: left;">File Name</th>';
                 html += '<th style="padding: 0.75rem; text-align: left;">Merchant</th>';
-                html += '<th style="padding: 0.75rem; text-align: left;">Amount</th>';
                 html += '<th style="padding: 0.75rem; text-align: left;">Date</th>';
-                html += '<th style="padding: 0.75rem; text-align: left;">Status</th>';
-                html += '<th style="padding: 0.75rem; text-align: left;">Uploaded</th>';
+                html += '<th style="padding: 0.75rem; text-align: left;">Items</th>';
+                html += '<th style="padding: 0.75rem; text-align: right;">Tax</th>';
+                html += '<th style="padding: 0.75rem; text-align: right;">Total</th>';
                 html += '</tr></thead><tbody>';
                 
                 receipts.forEach(receipt => {
+                    const currency = receipt.currency || 'INR';
+                    const currencySymbol = getCurrencySymbol(currency);
+                    
                     html += '<tr style="border-bottom: 1px solid #dee2e6;">';
-                    html += '<td style="padding: 0.75rem;">' + (receipt.fileMetadata?.fileName || 'N/A') + '</td>';
-                    html += '<td style="padding: 0.75rem;">' + (receipt.merchantName || 'N/A') + '</td>';
-                    html += '<td style="padding: 0.75rem;">' + (receipt.totalAmount || '0.00') + ' ' + (receipt.currency || 'INR') + '</td>';
-                    html += '<td style="padding: 0.75rem;">' + (receipt.receiptDate || 'N/A') + '</td>';
-                    html += '<td style="padding: 0.75rem;">' + (receipt.status || 'PENDING') + '</td>';
-                    html += '<td style="padding: 0.75rem;">' + (receipt.createdAt ? new Date(receipt.createdAt).toLocaleString() : 'N/A') + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + (receipt.merchantName || 'Unknown') + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + formatDate(receipt.receiptDate) + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + formatItems(receipt.items) + '</td>';
+                    html += '<td style="padding: 0.75rem; text-align: right;">' + 
+                            (receipt.taxAmount && receipt.taxAmount > 0 ? currencySymbol + receipt.taxAmount.toFixed(2) : '-') + '</td>';
+                    html += '<td style="padding: 0.75rem; text-align: right; font-weight: 600;">' + currencySymbol + 
+                            (receipt.totalAmount || 0).toFixed(2) + '</td>';
                     html += '</tr>';
                 });
                 

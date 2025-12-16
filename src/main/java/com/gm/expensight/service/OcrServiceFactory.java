@@ -1,5 +1,6 @@
 package com.gm.expensight.service;
 
+import com.gm.expensight.exception.OcrException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -63,7 +64,7 @@ public class OcrServiceFactory {
         return ocrServices.stream()
                 .filter(OcrService::isAvailable)
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
+                .orElseThrow(() -> new OcrException(
                         "No OCR service is available. Please check OCR configuration."));
     }
 

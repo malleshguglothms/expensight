@@ -1,7 +1,11 @@
 package com.gm.expensight.web;
 
 import com.gm.expensight.domain.model.Receipt;
+import com.gm.expensight.exception.ForbiddenException;
+import com.gm.expensight.exception.UnauthorizedException;
+import com.gm.expensight.service.ReceiptMapper;
 import com.gm.expensight.service.ReceiptService;
+import com.gm.expensight.web.dto.ReceiptResponse;
 import com.gm.expensight.web.dto.UploadReceiptResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,89 +26,70 @@ import java.util.UUID;
 public class ReceiptController {
 
     private final ReceiptService receiptService;
+    private final ReceiptMapper receiptMapper;
 
     @PostMapping("/upload")
     public ResponseEntity<UploadReceiptResponse> uploadReceipt(
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal OAuth2User principal) {
 
-        if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
+        validateAuthentication(principal);
 
-        String userEmail = principal.getAttribute("email");
-        if (userEmail == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
+        String userEmail = extractUserEmail(principal);
+        Receipt receipt = receiptService.uploadReceipt(file, userEmail);
 
-        try {
-            Receipt receipt = receiptService.uploadReceipt(file, userEmail);
+        UploadReceiptResponse response = UploadReceiptResponse.builder()
+                .receiptId(receipt.getId())
+                .fileName(receipt.getFileMetadata().getFileName())
+                .status(receipt.getStatus().name())
+                .uploadedAt(receipt.getCreatedAt())
+                .message("Receipt uploaded successfully")
+                .build();
 
-            UploadReceiptResponse response = UploadReceiptResponse.builder()
-                    .receiptId(receipt.getId())
-                    .fileName(receipt.getFileMetadata().getFileName())
-                    .status(receipt.getStatus().name())
-                    .uploadedAt(receipt.getCreatedAt())
-                    .message("Receipt uploaded successfully")
-                    .build();
-
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid file upload: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(UploadReceiptResponse.builder()
-                            .message("Invalid file: " + e.getMessage())
-                            .build());
-        } catch (Exception e) {
-            log.error("Failed to upload receipt: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(UploadReceiptResponse.builder()
-                            .message("Failed to upload receipt: " + e.getMessage())
-                            .build());
-        }
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping
-    public ResponseEntity<List<Receipt>> getReceipts(@AuthenticationPrincipal OAuth2User principal) {
-        if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
+    public ResponseEntity<List<ReceiptResponse>> getReceipts(@AuthenticationPrincipal OAuth2User principal) {
+        validateAuthentication(principal);
 
-        String userEmail = principal.getAttribute("email");
-        if (userEmail == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
+        String userEmail = extractUserEmail(principal);
         List<Receipt> receipts = receiptService.getUserReceipts(userEmail);
-        return ResponseEntity.ok(receipts);
+        List<ReceiptResponse> responses = receipts.stream()
+                .map(receiptMapper::toResponse)
+                .collect(java.util.stream.Collectors.toList());
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/{receiptId}")
-    public ResponseEntity<Receipt> getReceipt(
+    public ResponseEntity<ReceiptResponse> getReceipt(
             @PathVariable UUID receiptId,
             @AuthenticationPrincipal OAuth2User principal) {
         
+        validateAuthentication(principal);
+
+        String userEmail = extractUserEmail(principal);
+        Receipt receipt = receiptService.getReceiptById(receiptId);
+        
+        if (!receipt.getUserEmail().equals(userEmail)) {
+            throw new ForbiddenException("Access denied: Receipt belongs to another user");
+        }
+        
+        return ResponseEntity.ok(receiptMapper.toResponse(receipt));
+    }
+    
+    private void validateAuthentication(OAuth2User principal) {
         if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            throw new UnauthorizedException("Authentication required");
         }
-
-        String userEmail = principal.getAttribute("email");
-        if (userEmail == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+    
+    private String extractUserEmail(OAuth2User principal) {
+        String email = principal.getAttribute("email");
+        if (email == null) {
+            throw new UnauthorizedException("User email not found in authentication");
         }
-
-        try {
-            Receipt receipt = receiptService.getReceiptById(receiptId);
-            
-            if (!receipt.getUserEmail().equals(userEmail)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-            
-            return ResponseEntity.ok(receipt);
-        } catch (jakarta.persistence.EntityNotFoundException e) {
-            return ResponseEntity.notFound().build();
-        }
+        return email;
     }
 }
 

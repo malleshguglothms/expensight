@@ -1,5 +1,6 @@
 package com.gm.expensight.service;
 
+import com.gm.expensight.exception.ValidationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -22,22 +23,21 @@ public class FileValidator {
 
     public void validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("File cannot be null or empty");
+            throw new ValidationException("File cannot be null or empty");
         }
 
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new IllegalArgumentException(
+            throw new ValidationException(
                     String.format("File size (%d bytes) exceeds maximum allowed size of %d bytes (10MB)",
                             file.getSize(), MAX_FILE_SIZE));
         }
 
         String contentType = file.getContentType();
         if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase())) {
-            throw new IllegalArgumentException(
+            throw new ValidationException(
                     String.format("Invalid file type: %s. Allowed types: %s",
                             contentType, String.join(", ", ALLOWED_CONTENT_TYPES)));
         }
-
     }
 
     public long getMaxFileSize() {

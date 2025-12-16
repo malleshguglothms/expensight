@@ -6,9 +6,12 @@ import com.gm.expensight.domain.model.Receipt;
 import com.gm.expensight.repository.ReceiptRepository;
 import com.gm.expensight.service.FileStorageService;
 import com.gm.expensight.service.FileValidator;
-import com.gm.expensight.service.OcrException;
+import com.gm.expensight.exception.LlmException;
+import com.gm.expensight.exception.OcrException;
+import com.gm.expensight.exception.ResourceNotFoundException;
 import com.gm.expensight.service.OcrService;
 import com.gm.expensight.service.OcrServiceFactory;
+import com.gm.expensight.service.ReceiptParserService;
 import com.gm.expensight.service.ReceiptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +34,7 @@ public class ReceiptServiceImpl implements ReceiptService {
     private final FileStorageService fileStorageService;
     private final ReceiptRepository receiptRepository;
     private final OcrServiceFactory ocrServiceFactory;
+    private final ReceiptParserService receiptParserService;
 
     @Override
     @Transactional
@@ -85,8 +89,7 @@ public class ReceiptServiceImpl implements ReceiptService {
     public Receipt getReceiptById(UUID receiptId) {
         log.debug("Retrieving receipt with ID: {}", receiptId);
         return receiptRepository.findById(receiptId)
-                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
-                        "Receipt not found with ID: " + receiptId));
+                .orElseThrow(() -> new ResourceNotFoundException("Receipt", receiptId));
     }
 
     @Override
@@ -106,7 +109,7 @@ public class ReceiptServiceImpl implements ReceiptService {
         try {
             OcrService ocrService = ocrServiceFactory.getDefaultOcrService();
             if (!ocrService.isAvailable()) {
-                throw new IllegalStateException("OCR service is not available");
+                throw new OcrException("OCR service is not available");
             }
 
             byte[] fileData = fileStorageService.loadFile(receipt.getFileMetadata().getStoragePath());
@@ -125,7 +128,29 @@ public class ReceiptServiceImpl implements ReceiptService {
             log.info("OCR completed for receipt {}. Extracted {} characters.", 
                     receiptId, extractedText != null ? extractedText.length() : 0);
             
-            return receiptRepository.save(receipt);
+            receiptRepository.save(receipt);
+            
+            try {
+                log.debug("Starting LLM parsing for receipt {}", receiptId);
+                var parsingResult = receiptParserService.parseReceipt(extractedText);
+                
+                Receipt receiptToUpdate = receiptRepository.findById(receiptId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Receipt", receiptId));
+                
+                receiptParserService.applyParsingResult(receiptToUpdate, parsingResult);
+                receiptToUpdate.setStatus(ProcessingStatus.COMPLETED);
+                log.info("LLM parsing completed for receipt {}. Extracted merchant: {}, total: {}", 
+                        receiptId, parsingResult.getMerchantName(), parsingResult.getTotalAmount());
+                
+                return receiptRepository.save(receiptToUpdate);
+            } catch (LlmException e) {
+                log.error("LLM parsing failed for receipt {}: {}", receiptId, e.getMessage(), e);
+                Receipt failedReceipt = receiptRepository.findById(receiptId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Receipt", receiptId));
+                failedReceipt.setStatus(ProcessingStatus.FAILED);
+                failedReceipt.setFailureReason("LLM parsing failed: " + e.getMessage());
+                return receiptRepository.save(failedReceipt);
+            }
 
         } catch (OcrException e) {
             log.error("OCR processing failed for receipt {}: {}", receiptId, e.getMessage(), e);

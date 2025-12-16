@@ -1,5 +1,6 @@
 package com.gm.expensight.domain.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -35,6 +36,7 @@ public class ReceiptItem {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "receipt_id", nullable = false)
+    @JsonIgnore
     private Receipt receipt;
 
     @Column(name = "item_name", nullable = false)

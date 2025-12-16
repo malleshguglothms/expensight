@@ -1,5 +1,6 @@
 package com.gm.expensight.service.impl;
 
+import com.gm.expensight.exception.ValidationException;
 import com.gm.expensight.service.FileStorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -110,7 +111,7 @@ class LocalFileStorageServiceTest {
         String userEmail = "test@example.com";
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(ValidationException.class, () -> {
             fileStorageService.storeFile(null, userEmail);
         });
     }
@@ -126,7 +127,7 @@ class LocalFileStorageServiceTest {
         );
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> {
+        assertThrows(ValidationException.class, () -> {
             fileStorageService.storeFile(file, null);
         });
     }

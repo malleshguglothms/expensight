@@ -1,8 +1,11 @@
 package com.gm.expensight.service.impl;
 
-import com.gm.expensight.service.OcrException;
+import com.gm.expensight.exception.OcrException;
+import com.gm.expensight.exception.ValidationException;
 import com.gm.expensight.service.OcrService;
+import com.gm.expensight.service.util.OcrTextNormalizer;
 import com.gm.expensight.service.util.PdfToImageConverter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
@@ -16,17 +19,14 @@ import java.util.List;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class TesseractOcrService implements OcrService {
     
     private static final String PAGE_SEPARATOR = "\n--- Page %d ---\n";
     
     private final Tesseract tesseract;
     private final PdfToImageConverter pdfConverter;
-    
-    public TesseractOcrService(Tesseract tesseract, PdfToImageConverter pdfConverter) {
-        this.tesseract = tesseract;
-        this.pdfConverter = pdfConverter;
-    }
+    private final OcrTextNormalizer textNormalizer;
     
     @Override
     public boolean isAvailable() {
@@ -47,7 +47,7 @@ public class TesseractOcrService implements OcrService {
     @Override
     public String extractText(byte[] imageData) throws OcrException {
         if (imageData == null) {
-            throw new IllegalArgumentException("Image data cannot be null");
+            throw new ValidationException("Image data cannot be null");
         }
         
         try {
@@ -57,7 +57,10 @@ public class TesseractOcrService implements OcrService {
             }
             
             String text = tesseract.doOCR(image);
-            return text != null ? text.trim() : "";
+            if (text == null || text.trim().isEmpty()) {
+                return "";
+            }
+            return textNormalizer.enhanceForIndianReceipts(text.trim());
             
         } catch (TesseractException e) {
             log.error("Tesseract OCR failed: {}", e.getMessage(), e);
@@ -71,7 +74,7 @@ public class TesseractOcrService implements OcrService {
     @Override
     public String extractTextFromPdf(byte[] pdfData) throws OcrException {
         if (pdfData == null) {
-            throw new IllegalArgumentException("PDF data cannot be null");
+            throw new ValidationException("PDF data cannot be null");
         }
         
         try {
@@ -92,7 +95,7 @@ public class TesseractOcrService implements OcrService {
                         if (i > 0) {
                             fullText.append(String.format(PAGE_SEPARATOR, i + 1));
                         }
-                        fullText.append(pageText.trim());
+                        fullText.append(textNormalizer.enhanceForIndianReceipts(pageText.trim()));
                     }
                 } catch (TesseractException e) {
                     log.warn("Failed to extract text from page {}: {}", i + 1, e.getMessage());

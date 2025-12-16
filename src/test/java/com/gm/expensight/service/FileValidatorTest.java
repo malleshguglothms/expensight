@@ -1,5 +1,6 @@
 package com.gm.expensight.service;
 
+import com.gm.expensight.exception.ValidationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -84,7 +85,7 @@ class FileValidatorTest {
     void shouldThrowExceptionWhenFileIsNull() {
         // When & Then
         assertThatThrownBy(() -> fileValidator.validate(null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ValidationException.class)
                 .hasMessage("File cannot be null or empty");
     }
 
@@ -100,7 +101,7 @@ class FileValidatorTest {
 
         // When & Then
         assertThatThrownBy(() -> fileValidator.validate(emptyFile))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ValidationException.class)
                 .hasMessage("File cannot be null or empty");
     }
 
@@ -117,7 +118,7 @@ class FileValidatorTest {
 
         // When & Then
         assertThatThrownBy(() -> fileValidator.validate(largeFile))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("exceeds maximum allowed size");
     }
 
@@ -148,7 +149,7 @@ class FileValidatorTest {
 
         // When & Then
         assertThatThrownBy(() -> fileValidator.validate(fileWithNullType))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("Invalid file type");
     }
 
@@ -164,7 +165,7 @@ class FileValidatorTest {
 
         // When & Then
         assertThatThrownBy(() -> fileValidator.validate(invalidFile))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("Invalid file type");
     }
 

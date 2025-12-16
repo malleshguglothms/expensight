@@ -3,6 +3,7 @@ package com.gm.expensight.web;
 import com.gm.expensight.domain.model.FileMetadata;
 import com.gm.expensight.domain.model.ProcessingStatus;
 import com.gm.expensight.domain.model.Receipt;
+import com.gm.expensight.service.ReceiptMapper;
 import com.gm.expensight.service.ReceiptService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +28,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = ReceiptController.class)
-@TestPropertySource(properties = "storage.location=test-upload-dir")
+@TestPropertySource(properties = {
+        "storage.location=test-upload-dir",
+        "llm.openrouter.api-key=test-key",
+        "spring.security.oauth2.client.registration.google.client-id=test-client-id",
+        "spring.security.oauth2.client.registration.google.client-secret=test-client-secret"
+})
 @SuppressWarnings("removal")
 class ReceiptControllerTest {
 
@@ -36,6 +42,9 @@ class ReceiptControllerTest {
 
     @MockBean
     private ReceiptService receiptService;
+    
+    @MockBean
+    private ReceiptMapper receiptMapper;
 
     @Test
     void shouldUploadReceiptSuccessfully() throws Exception {

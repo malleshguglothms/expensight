@@ -1,6 +1,6 @@
 package com.gm.expensight.service.impl;
 
-import com.gm.expensight.service.OcrException;
+import com.gm.expensight.exception.OcrException;
 import com.gm.expensight.service.OcrService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

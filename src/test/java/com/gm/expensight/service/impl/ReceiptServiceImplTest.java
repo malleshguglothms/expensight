@@ -6,7 +6,8 @@ import com.gm.expensight.domain.model.Receipt;
 import com.gm.expensight.repository.ReceiptRepository;
 import com.gm.expensight.service.FileStorageService;
 import com.gm.expensight.service.FileValidator;
-import com.gm.expensight.service.OcrException;
+import com.gm.expensight.exception.OcrException;
+import com.gm.expensight.exception.ResourceNotFoundException;
 import com.gm.expensight.service.OcrService;
 import com.gm.expensight.service.OcrServiceFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +50,9 @@ class ReceiptServiceImplTest {
 
     @Mock
     private OcrService ocrService;
+    
+    @Mock
+    private com.gm.expensight.service.ReceiptParserService receiptParserService;
 
     @InjectMocks
     private ReceiptServiceImpl receiptService;
@@ -219,8 +223,8 @@ class ReceiptServiceImplTest {
 
         // When & Then
         assertThatThrownBy(() -> receiptService.getReceiptById(receiptId))
-                .isInstanceOf(jakarta.persistence.EntityNotFoundException.class)
-                .hasMessageContaining("Receipt not found with ID: " + receiptId);
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Receipt");
 
         verify(receiptRepository).findById(receiptId);
     }
@@ -237,12 +241,23 @@ class ReceiptServiceImplTest {
         String extractedText = "Extracted receipt text";
 
         when(receiptRepository.findById(receiptId))
-                .thenReturn(Optional.of(receipt));
+                .thenReturn(Optional.of(receipt))
+                .thenReturn(Optional.of(receipt)); // Second call for reload after OCR
         when(ocrServiceFactory.getDefaultOcrService()).thenReturn(ocrService);
         when(ocrService.isAvailable()).thenReturn(true);
         when(fileStorageService.loadFile("test/path.jpg")).thenReturn(fileData);
         when(ocrService.extractText(fileData)).thenReturn(extractedText);
         when(receiptRepository.save(any(Receipt.class))).thenReturn(receipt);
+        
+        com.gm.expensight.service.dto.ReceiptParsingResult parsingResult = 
+                com.gm.expensight.service.dto.ReceiptParsingResult.builder()
+                        .merchantName("Test Merchant")
+                        .totalAmount(BigDecimal.valueOf(100.0))
+                        .receiptDate(LocalDate.now())
+                        .currency("INR")
+                        .items(java.util.Collections.emptyList())
+                        .build();
+        when(receiptParserService.parseReceipt(extractedText)).thenReturn(parsingResult);
 
         // When
         Receipt result = receiptService.processReceipt(receiptId);
@@ -251,9 +266,10 @@ class ReceiptServiceImplTest {
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(receiptId);
         assertThat(result.getRawOcrText()).isEqualTo(extractedText);
-        assertThat(result.getStatus()).isEqualTo(ProcessingStatus.PROCESSING);
+        assertThat(result.getStatus()).isEqualTo(ProcessingStatus.COMPLETED);
+        verify(receiptParserService).parseReceipt(extractedText);
 
-        verify(receiptRepository).findById(receiptId);
+        verify(receiptRepository, atLeast(2)).findById(receiptId); // Called at least twice: initial load and reload before LLM
         verify(ocrServiceFactory).getDefaultOcrService();
         verify(fileStorageService).loadFile("test/path.jpg");
         verify(ocrService).extractText(fileData);
@@ -268,7 +284,7 @@ class ReceiptServiceImplTest {
 
         // When & Then
         assertThatThrownBy(() -> receiptService.processReceipt(receiptId))
-                .isInstanceOf(jakarta.persistence.EntityNotFoundException.class);
+                .isInstanceOf(ResourceNotFoundException.class);
 
         verify(receiptRepository).findById(receiptId);
     }

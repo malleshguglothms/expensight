@@ -1,5 +1,7 @@
 package com.gm.expensight.service.impl;
 
+import com.gm.expensight.exception.FileStorageException;
+import com.gm.expensight.exception.ValidationException;
 import com.gm.expensight.service.FileStorageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,7 +32,7 @@ public class LocalFileStorageService implements FileStorageService {
         try {
             Files.createDirectories(this.storageLocation);
         } catch (IOException e) {
-            throw new RuntimeException("Could not create storage directory", e);
+            throw new FileStorageException("Could not create storage directory", e);
         }
     }
 
@@ -39,17 +41,17 @@ public class LocalFileStorageService implements FileStorageService {
         try {
             Files.createDirectories(this.storageLocation);
         } catch (IOException e) {
-            throw new RuntimeException("Could not create storage directory", e);
+            throw new FileStorageException("Could not create storage directory", e);
         }
     }
 
     @Override
     public String storeFile(MultipartFile file, String userEmail) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("File cannot be null or empty");
+            throw new ValidationException("File cannot be null or empty");
         }
         if (userEmail == null || userEmail.isBlank()) {
-            throw new IllegalArgumentException("User email cannot be null or empty");
+            throw new ValidationException("User email cannot be null or empty");
         }
 
         try {
@@ -66,7 +68,7 @@ public class LocalFileStorageService implements FileStorageService {
             return sanitizeEmail(userEmail) + "/" + uniqueFilename;
         } catch (IOException e) {
             log.error("Failed to store file: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to store file", e);
+            throw new FileStorageException("Failed to store file", e);
         }
     }
 

@@ -101,6 +101,12 @@
 			<artifactId>pdfbox-app</artifactId>
 			<version>3.0.1</version>
 		</dependency>
+		
+		<!-- HTTP Client for LLM API -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webflux</artifactId>
+		</dependency>
 	</dependencies>
 
 	<build>

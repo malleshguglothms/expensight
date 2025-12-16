@@ -1,6 +1,7 @@
 package com.gm.expensight.service.impl;
 
-import com.gm.expensight.service.OcrException;
+import com.gm.expensight.exception.OcrException;
+import com.gm.expensight.service.util.OcrTextNormalizer;
 import com.gm.expensight.service.util.PdfToImageConverter;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
@@ -19,8 +20,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Tesseract OCR Service Tests")
@@ -32,12 +34,15 @@ class TesseractOcrServiceTest {
     @Mock
     private PdfToImageConverter pdfConverter;
     
+    @Mock
+    private OcrTextNormalizer textNormalizer;
+    
     private TesseractOcrService ocrService;
     
     @BeforeEach
     void setUp() {
-        // Use package-private constructor for testing
-        ocrService = new TesseractOcrService(tesseract, pdfConverter);
+        ocrService = new TesseractOcrService(tesseract, pdfConverter, textNormalizer);
+        lenient().when(textNormalizer.enhanceForIndianReceipts(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
     }
     
     @Test
@@ -47,6 +52,7 @@ class TesseractOcrServiceTest {
         byte[] imageData = createSampleImage();
         String expectedText = "Sample receipt text";
         when(tesseract.doOCR(any(BufferedImage.class))).thenReturn(expectedText);
+        when(textNormalizer.enhanceForIndianReceipts(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         
         // When
         String result = ocrService.extractText(imageData);
@@ -82,6 +88,7 @@ class TesseractOcrServiceTest {
         when(pdfConverter.convertToImages(pdfData)).thenReturn(pages);
         when(tesseract.doOCR(page1)).thenReturn("Page 1 text");
         when(tesseract.doOCR(page2)).thenReturn("Page 2 text");
+        when(textNormalizer.enhanceForIndianReceipts(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         
         // When
         String result = ocrService.extractTextFromPdf(pdfData);
@@ -134,7 +141,7 @@ class TesseractOcrServiceTest {
     void shouldHandleNullImageData() {
         // When & Then
         assertThatThrownBy(() -> ocrService.extractText(null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(com.gm.expensight.exception.ValidationException.class)
                 .hasMessageContaining("Image data cannot be null");
     }
     
@@ -143,7 +150,7 @@ class TesseractOcrServiceTest {
     void shouldHandleNullPdfData() {
         // When & Then
         assertThatThrownBy(() -> ocrService.extractTextFromPdf(null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(com.gm.expensight.exception.ValidationException.class)
                 .hasMessageContaining("PDF data cannot be null");
     }
     
@@ -159,6 +166,7 @@ class TesseractOcrServiceTest {
         when(pdfConverter.convertToImages(pdfData)).thenReturn(pages);
         when(tesseract.doOCR(page1)).thenReturn("First page");
         when(tesseract.doOCR(page2)).thenReturn("Second page");
+        when(textNormalizer.enhanceForIndianReceipts(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         
         // When
         String result = ocrService.extractTextFromPdf(pdfData);
