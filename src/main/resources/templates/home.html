@@ -32,13 +32,174 @@
             
             <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ddd;">
             
+            <h2>Upload Receipt</h2>
+            <form id="uploadForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <div style="margin-bottom: 1rem;">
+                    <label for="file" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">
+                        Select Receipt (JPG, PNG, or PDF - Max 10MB):
+                    </label>
+                    <input type="file" id="file" name="file" accept="image/jpeg,image/png,image/jpg,application/pdf" required 
+                           style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 100%; max-width: 400px;">
+                </div>
+                <button type="submit" class="btn" style="margin-top: 0.5rem;">Upload Receipt</button>
+            </form>
+            
+            <div id="uploadStatus" style="margin-top: 1rem; display: none;"></div>
+            
+            <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ddd;">
+            
             <h2>Your Receipts</h2>
-            <p>Receipt upload functionality will be available soon.</p>
-            <p>This page will display a table of all your uploaded receipts with extracted data.</p>
+            <div id="receiptsList">
+                <p>Loading receipts...</p>
+            </div>
         </div>
     </main>
     
     <th:block th:replace="~{layout/base :: footer}"></th:block>
+    
+    <script>
+        // Get CSRF token from meta tag or cookie
+        function getCsrfToken() {
+            const csrfTokenMeta = document.querySelector('meta[name="_csrf"]');
+            if (csrfTokenMeta) {
+                return csrfTokenMeta.getAttribute('content');
+            }
+            // Fallback: try to get from cookie
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === 'XSRF-TOKEN' || name === '_csrf') {
+                    return decodeURIComponent(value);
+                }
+            }
+            return null;
+        }
+        
+        // Handle form submission
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('file');
+            const file = fileInput.files[0];
+            const statusDiv = document.getElementById('uploadStatus');
+            
+            if (!file) {
+                showStatus('Please select a file to upload.', 'error');
+                return;
+            }
+            
+            // Validate file size (10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                showStatus('File size exceeds 10MB limit.', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Get CSRF token
+            const csrfToken = getCsrfToken();
+            const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.getAttribute('content') || 'X-CSRF-TOKEN';
+            const headers = {};
+            if (csrfToken) {
+                headers[csrfHeader] = csrfToken;
+            }
+            
+            showStatus('Uploading...', 'info');
+            
+            try {
+                const response = await fetch('/receipts/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers: headers
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus('Receipt uploaded successfully! Receipt ID: ' + result.receiptId, 'success');
+                    fileInput.value = ''; // Clear file input
+                    loadReceipts(); // Refresh receipts list
+                } else {
+                    showStatus('Upload failed: ' + (result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showStatus('Error uploading file: ' + error.message, 'error');
+            }
+        });
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.style.padding = '1rem';
+            statusDiv.style.borderRadius = '4px';
+            statusDiv.style.marginTop = '1rem';
+            
+            if (type === 'success') {
+                statusDiv.style.backgroundColor = '#d4edda';
+                statusDiv.style.border = '1px solid #c3e6cb';
+                statusDiv.style.color = '#155724';
+            } else if (type === 'error') {
+                statusDiv.style.backgroundColor = '#f8d7da';
+                statusDiv.style.border = '1px solid #f5c6cb';
+                statusDiv.style.color = '#721c24';
+            } else {
+                statusDiv.style.backgroundColor = '#d1ecf1';
+                statusDiv.style.border = '1px solid #bee5eb';
+                statusDiv.style.color = '#0c5460';
+            }
+            
+            statusDiv.textContent = message;
+        }
+        
+        // Load and display receipts
+        async function loadReceipts() {
+            const receiptsDiv = document.getElementById('receiptsList');
+            
+            try {
+                const response = await fetch('/receipts');
+                if (!response.ok) {
+                    throw new Error('Failed to load receipts');
+                }
+                
+                const receipts = await response.json();
+                
+                if (receipts.length === 0) {
+                    receiptsDiv.innerHTML = '<p>No receipts uploaded yet.</p>';
+                    return;
+                }
+                
+                let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">';
+                html += '<thead><tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">';
+                html += '<th style="padding: 0.75rem; text-align: left;">File Name</th>';
+                html += '<th style="padding: 0.75rem; text-align: left;">Merchant</th>';
+                html += '<th style="padding: 0.75rem; text-align: left;">Amount</th>';
+                html += '<th style="padding: 0.75rem; text-align: left;">Date</th>';
+                html += '<th style="padding: 0.75rem; text-align: left;">Status</th>';
+                html += '<th style="padding: 0.75rem; text-align: left;">Uploaded</th>';
+                html += '</tr></thead><tbody>';
+                
+                receipts.forEach(receipt => {
+                    html += '<tr style="border-bottom: 1px solid #dee2e6;">';
+                    html += '<td style="padding: 0.75rem;">' + (receipt.fileMetadata?.fileName || 'N/A') + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + (receipt.merchantName || 'N/A') + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + (receipt.totalAmount || '0.00') + ' ' + (receipt.currency || 'INR') + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + (receipt.receiptDate || 'N/A') + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + (receipt.status || 'PENDING') + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + (receipt.createdAt ? new Date(receipt.createdAt).toLocaleString() : 'N/A') + '</td>';
+                    html += '</tr>';
+                });
+                
+                html += '</tbody></table>';
+                receiptsDiv.innerHTML = html;
+            } catch (error) {
+                receiptsDiv.innerHTML = '<p style="color: #721c24;">Error loading receipts: ' + error.message + '</p>';
+            }
+        }
+        
+        // Load receipts on page load
+        loadReceipts();
+    </script>
 </body>
 </html>
 
