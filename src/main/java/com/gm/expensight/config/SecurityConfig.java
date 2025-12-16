@@ -24,12 +24,11 @@ public class SecurityConfig {
         http
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
-                                "/", "/login", "/force-login", "/css/**", "/js/**", "/images/**", "/h2-console/**", "/debug/**"
+                                "/", "/login", "/force-login", "/css/**", "/js/**", "/images/**", "/h2-console/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth -> oauth
-                        .loginPage("/login")
                         .defaultSuccessUrl("/home", true)
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService)

@@ -22,7 +22,7 @@
             
             <div th:if="${#authorization.expression('!isAuthenticated()')}" style="margin-top: 2rem;">
                 <p>
-                    <a href="/login" class="btn">Sign in with Google</a>
+                    <a href="/oauth2/authorization/google" class="btn">Sign in with Google</a>
                 </p>
             </div>
             

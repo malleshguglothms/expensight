@@ -20,7 +20,7 @@ public class HomeController {
         model.addAttribute("pageTitle", "Dashboard");
         
         if (principal == null) {
-            return "redirect:/login";
+            return "redirect:/";
         }
         
         String name = principal.getAttribute("name");
@@ -34,13 +34,8 @@ public class HomeController {
     }
 
     @GetMapping("/login")
-    public String login(@AuthenticationPrincipal OAuth2User principal, Model model) {
-        model.addAttribute("pageTitle", "Login");
-        if (principal != null) {
-            model.addAttribute("alreadyLoggedIn", true);
-            model.addAttribute("name", principal.getAttribute("name"));
-        }
-        return "login";
+    public String login() {
+        return "redirect:/";
     }
 
     @GetMapping("/force-login")
