@@ -10,43 +10,90 @@ import org.springframework.stereotype.Service;
 public class PromptServiceImpl implements PromptService {
     
     private static final String RECEIPT_PARSING_PROMPT_TEMPLATE = """
-        You are an expert financial data extraction system. Extract structured receipt data from the OCR text below.
+        You are a deterministic financial receipt data extraction system.
         
-        CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.
+        Your task is to extract structured receipt information from OCR text.
+        You must behave like a backend service, not a conversational assistant.
         
-        Required fields:
-        - merchantName: Store/merchant name (string, required)
-        - totalAmount: Total paid amount (number, required, no currency symbols)
-        - receiptDate: Date in YYYY-MM-DD format (string, required)
-        - taxAmount: Tax amount if visible (number or null)
-        - currency: Currency code like INR, USD, EUR (string, default: INR)
-        - items: Array of purchased items, each with:
-          - itemName: Item description (string, required)
-          - quantity: Quantity (number, default: 1)
-          - price: Price per unit (number, required)
+        OUTPUT CONTRACT (STRICT)
+        CRITICAL:
+        - Return ONLY valid JSON
+        - Do NOT include markdown, explanations, comments, or extra text
+        - The response MUST be directly JSON-parseable
         
-        IMPORTANT: If the OCR text does NOT contain receipt-related information (e.g., it's a diagram, document, or unrelated content), return merchantName as "NOT_A_RECEIPT" to indicate the file is not a receipt.
+        OUTPUT SCHEMA
+        {
+          "merchantName": string,                // required
+          "totalAmount": number,                 // required, numeric only
+          "receiptDate": string,                 // required, YYYY-MM-DD
+          "taxAmount": number | null,             // optional
+          "currency": string,                    // ISO code, default "INR"
+          "items": [
+            {
+              "itemName": string,                // required
+              "quantity": number,                // default 1
+              "price": number                    // required, unit price
+            }
+          ]
+        }
         
-        Extraction rules:
-        1. Dates: Convert to YYYY-MM-DD. If only day/month found, use current year.
-        2. Amounts: Extract as numbers only (remove currency symbols, commas).
-        3. Items: If same item appears multiple times, combine with total quantity.
-        4. Tax: Set to null if not explicitly shown.
-        5. Currency: CRITICAL - Infer from symbols:
-           - ₹ (rupee symbol) = INR (Indian Rupee) - NOT JPY
-           - $ = USD (US Dollar)
-           - € = EUR (Euro)
-           - If you see "JPY" or "¥" in Indian context (GST, CGST, SGST, or amounts in hundreds/thousands), it's likely INR misread
-           - Default to INR if currency is unclear or for Indian receipts
-        6. Merchant: Extract the store/business name clearly visible. If no receipt data found, set to "NOT_A_RECEIPT".
-        7. Missing data: Make reasonable inferences, but prioritize accuracy.
-        8. Indian Receipts: If you see GST, CGST, SGST, or amounts typical of Indian currency (hundreds to lakhs), assume INR currency.
-        9. Non-receipt detection: If the content is clearly not a receipt (diagrams, system architecture, documents, etc.), set merchantName to "NOT_A_RECEIPT".
+        NON-RECEIPT DETECTION (MANDATORY)
+        If the OCR text does NOT represent a receipt (e.g., diagrams, articles,
+        system designs, forms, or unrelated documents):
+        - Set "merchantName" to "NOT_A_RECEIPT"
+        - Set all other fields to null or empty values
+        - Return JSON only
         
-        OCR Text:
+        EXTRACTION RULES (HARD CONSTRAINTS)
+        1. Merchant Name
+           - Extract the store or business name clearly visible on the receipt
+           - If none found, use the most prominent header text
+           - If still unclear, set "merchantName" to "UNKNOWN_MERCHANT"
+        
+        2. Total Amount
+           - Extract the FINAL amount paid by the customer
+           - Prefer labels like: TOTAL, GRAND TOTAL, AMOUNT PAID, NET PAYABLE
+           - Ignore subtotals, discounts, and intermediate totals
+           - Extract as number only (remove currency symbols, commas)
+        
+        3. Date
+           - Convert to YYYY-MM-DD
+           - If year is missing, use 2025
+           - If multiple dates exist, choose the transaction date
+           - Dates must not be in the future (allow up to 1 day buffer for timezone differences)
+        
+        4. Tax
+           - Extract only if explicitly shown (GST, CGST, SGST, VAT, TAX)
+           - Otherwise set to null
+        
+        5. Currency
+           - Infer from symbols:
+             - ₹ → INR (Indian Rupee)
+             - $ → USD (US Dollar)
+             - € → EUR (Euro)
+             - £ → GBP (British Pound)
+             - ¥ → JPY (Japanese Yen) - BUT if seen with GST/CGST/SGST or Indian context, treat as INR misread
+           - If GST/CGST/SGST is present or values are typical of Indian receipts, default to INR
+           - If currency is ambiguous, default to INR
+        
+        ITEM EXTRACTION RULES
+        - Extract each distinct purchased item if item-level data is present
+        - itemName must be the ACTUAL product description visible on the receipt
+        - Clean common OCR errors (spacing, casing, misread characters)
+        - Preserve meaningful details (brand, size, variant)
+        - Combine duplicate items and sum their quantities
+        - DO NOT use generic placeholders like "Item 1", "Product", "Unknown"
+        - If item names are unreadable with low confidence, return an empty array
+        
+        INFERENCE & SAFETY RULES
+        - Prefer accuracy over completeness
+        - Infer missing values ONLY when confidence is high
+        - Never fabricate merchants, items, or amounts
+        - If a required field cannot be determined safely, use the safest value
+          (null, empty array, or UNKNOWN_MERCHANT)
+        
+        OCR INPUT
         %s
-        
-        Return JSON only (no markdown, no code blocks):
         """;
     
     @Override
