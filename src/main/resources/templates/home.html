@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' - Expensight'">Expensight</title>
+    <th:block th:replace="~{layout/base :: head}"></th:block>
+</head>
+<body>
+    <th:block th:replace="~{layout/base :: header}"></th:block>
+    
+    <main class="main-content">
+        <div class="container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <h1 style="margin: 0;">Dashboard</h1>
+                <div th:if="${name != null || email != null}" style="text-align: right; font-size: 0.9rem; color: #6c757d;">
+                    <div><strong th:text="${name}">User</strong></div>
+                    <div th:text="${email}">email@example.com</div>
+                </div>
+            </div>
+            
+            <h2>Upload Receipt</h2>
+            <form id="uploadForm" enctype="multipart/form-data" style="margin-top: 1rem;">
+                <div style="margin-bottom: 1rem;">
+                    <label for="file" style="display: block; margin-bottom: 0.5rem; font-weight: bold;">
+                        Select Receipt (JPG, PNG, or PDF - Max 10MB):
+                    </label>
+                    <input type="file" id="file" name="file" accept="image/jpeg,image/png,image/jpg,application/pdf" required 
+                           style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 100%; max-width: 400px;">
+                </div>
+                <button type="submit" class="btn" style="margin-top: 0.5rem;">Upload Receipt</button>
+            </form>
+            
+            <div id="uploadStatus" style="margin-top: 1rem; display: none;"></div>
+            
+            <hr style="margin: 2rem 0; border: none; border-top: 1px solid #ddd;">
+            
+            <h2>Your Receipts</h2>
+            <div id="receiptsList">
+                <p>Loading receipts...</p>
+            </div>
+        </div>
+    </main>
+    
+    <th:block th:replace="~{layout/base :: footer}"></th:block>
+    
+    <script>
+        // Get CSRF token from meta tag or cookie
+        function getCsrfToken() {
+            const csrfTokenMeta = document.querySelector('meta[name="_csrf"]');
+            if (csrfTokenMeta) {
+                return csrfTokenMeta.getAttribute('content');
+            }
+            // Fallback: try to get from cookie
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === 'XSRF-TOKEN' || name === '_csrf') {
+                    return decodeURIComponent(value);
+                }
+            }
+            return null;
+        }
+        
+        // Handle form submission
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('file');
+            const file = fileInput.files[0];
+            const statusDiv = document.getElementById('uploadStatus');
+            
+            if (!file) {
+                showStatus('Please select a file to upload.', 'error');
+                return;
+            }
+            
+            // Validate file size (10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                showStatus('File size exceeds 10MB limit.', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Get CSRF token
+            const csrfToken = getCsrfToken();
+            const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.getAttribute('content') || 'X-CSRF-TOKEN';
+            const headers = {};
+            if (csrfToken) {
+                headers[csrfHeader] = csrfToken;
+            }
+            
+            showStatus('Uploading...', 'info');
+            
+            try {
+                const response = await fetch('/receipts/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers: headers
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus('Receipt uploaded successfully! Receipt ID: ' + result.receiptId, 'success');
+                    fileInput.value = ''; // Clear file input
+                    loadReceipts(); // Refresh receipts list
+                } else {
+                    showStatus('Upload failed: ' + (result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showStatus('Error uploading file: ' + error.message, 'error');
+            }
+        });
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.style.padding = '1rem';
+            statusDiv.style.borderRadius = '4px';
+            statusDiv.style.marginTop = '1rem';
+            
+            if (type === 'success') {
+                statusDiv.style.backgroundColor = '#d4edda';
+                statusDiv.style.border = '1px solid #c3e6cb';
+                statusDiv.style.color = '#155724';
+            } else if (type === 'error') {
+                statusDiv.style.backgroundColor = '#f8d7da';
+                statusDiv.style.border = '1px solid #f5c6cb';
+                statusDiv.style.color = '#721c24';
+            } else {
+                statusDiv.style.backgroundColor = '#d1ecf1';
+                statusDiv.style.border = '1px solid #bee5eb';
+                statusDiv.style.color = '#0c5460';
+            }
+            
+            statusDiv.textContent = message;
+        }
+        
+        // Load and display receipts
+        async function loadReceipts() {
+            const receiptsDiv = document.getElementById('receiptsList');
+            
+            try {
+                const response = await fetch('/receipts');
+                if (!response.ok) {
+                    throw new Error('Failed to load receipts');
+                }
+                
+                const receipts = await response.json();
+                
+                if (receipts.length === 0) {
+                    receiptsDiv.innerHTML = '<p>No receipts uploaded yet.</p>';
+                    return;
+                }
+                
+                function formatDate(dateString) {
+                    if (!dateString) return 'N/A';
+                    try {
+                        const date = new Date(dateString);
+                        if (isNaN(date.getTime())) {
+                            return dateString;
+                        }
+                        return date.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric' 
+                        });
+                    } catch (e) {
+                        return dateString;
+                    }
+                }
+                
+                function formatItems(items) {
+                    if (!items || items.length === 0) return 'N/A';
+                    return items.map(item => {
+                        const qty = item.quantity > 1 ? ' (x' + item.quantity + ')' : '';
+                        return (item.itemName || 'N/A') + qty;
+                    }).join(', ');
+                }
+                
+                function getCurrencySymbol(currency) {
+                    if (!currency) return '₹';
+                    const currencyMap = {
+                        'INR': '₹',
+                        'USD': '$',
+                        'EUR': '€',
+                        'GBP': '£',
+                        'JPY': '¥'
+                    };
+                    return currencyMap[currency.toUpperCase()] || currency + ' ';
+                }
+                
+                let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">';
+                html += '<thead><tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">';
+                html += '<th style="padding: 0.75rem; text-align: left;">Merchant</th>';
+                html += '<th style="padding: 0.75rem; text-align: left;">Date</th>';
+                html += '<th style="padding: 0.75rem; text-align: left;">Items</th>';
+                html += '<th style="padding: 0.75rem; text-align: right;">Tax</th>';
+                html += '<th style="padding: 0.75rem; text-align: right;">Total</th>';
+                html += '</tr></thead><tbody>';
+                
+                receipts.forEach(receipt => {
+                    const currency = receipt.currency || 'INR';
+                    const currencySymbol = getCurrencySymbol(currency);
+                    
+                    html += '<tr style="border-bottom: 1px solid #dee2e6;">';
+                    html += '<td style="padding: 0.75rem;">' + (receipt.merchantName || 'Unknown') + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + formatDate(receipt.receiptDate) + '</td>';
+                    html += '<td style="padding: 0.75rem;">' + formatItems(receipt.items) + '</td>';
+                    html += '<td style="padding: 0.75rem; text-align: right;">' + 
+                            (receipt.taxAmount && receipt.taxAmount > 0 ? currencySymbol + receipt.taxAmount.toFixed(2) : '-') + '</td>';
+                    html += '<td style="padding: 0.75rem; text-align: right; font-weight: 600;">' + currencySymbol + 
+                            (receipt.totalAmount || 0).toFixed(2) + '</td>';
+                    html += '</tr>';
+                });
+                
+                html += '</tbody></table>';
+                receiptsDiv.innerHTML = html;
+            } catch (error) {
+                receiptsDiv.innerHTML = '<p style="color: #721c24;">Error loading receipts: ' + error.message + '</p>';
+            }
+        }
+        
+        // Load receipts on page load
+        loadReceipts();
+    </script>
+</body>
+</html>
+
+
